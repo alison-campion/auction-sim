@@ -1,5 +1,5 @@
 import matplotlib.pyplot as plt
-from scipy.stats import uniform, norm, beta
+from scipy.stats import uniform, norm, beta, truncnorm
 import scipy.integrate as integrate
 from scipy.integrate import quad
 import seaborn as sns
@@ -11,37 +11,19 @@ sns.set(rc = {'figure.figsize':(5,5)})
 
 # CDFs 
 ## Uniform Distribution 
-# def cdf_uniform(x,delta,n):
-#     return ((x/delta)**(n-1))
+def cdf_uniform(x,lower, upper,n):
+    return ((x-lower)/(upper-lower))**(n-1)
 
 # ## (Truncated) Normal Distribution
-# def cdf_normal(x, mean, sd, n):
-#     return(((norm(loc=mean, scale = sd).cdf(x))/(norm(loc=mean, scale = sd).cdf(0)))**(n-1))
+def cdf_normal(x, mean, sd, n):
+    return(truncnorm.cdf(x, a = 0, b = 100, loc = mean, scale = sd)**(n-1))
 
-def monte_carlo_integrator(dist, params, lower, upper, n):
-    def f(x, lower, upper):
-        if dist == 'uniform':
-            return ((x-lower)/(upper-lower))**(n-1)
-        elif dist == 'normal':
-            return (norm.cdf(x, loc = params[0], scale = params[1]))**(n-1)
-        elif dist == 'beta':
-            return (beta.cdf(x, a = params[0], b = params[1], scale = params[2]))**(n-1)
-        
-    n = 1000
-    ar = np.zeros(n)
-    for i in range (len(ar)):
-        ar[i] = random.uniform(lower,upper)
+def cdf_beta(x, a, b, n):
+    return (beta(a=a, b = b).cdf(x))**(n-1)
+
+
+
     
-    integral = 0.0
-    for i in ar:
-        integral += f(i, lower, upper)
-        
-    ret = (upper-lower)/float(n)*integral
-    return ret
-
-
-
-# Seller revenue arrays
 def val_simulator(dist, n_sim, n_bid, params):
     FP_revenue = []
     SP_revenue = []
@@ -54,21 +36,21 @@ def val_simulator(dist, n_sim, n_bid, params):
             vals = np.random.uniform(params[0], params[1], n_bid)
             ## First Price Auction optimal bida
             for v in vals:
-                FP_bid = v - ((monte_carlo_integrator(dist, params, 0, v, n_bid)/((v-params[0])/(params[1]-params[0]))**(n_bid-1)))
+                FP_bid = v - (integrate.quad(cdf_uniform, 0, v, args = (params[0], params[1],n_bid))[0])/((v-params[0])/(params[1]-params[0]))**(n_bid-1)
                 FP_optimal_bid.append(FP_bid)
                 
         elif dist == 'normal':
-            vals = np.random.normal(params[0], params[1], n_sim)
+            vals = truncnorm.rvs(a = 0, b = 100, loc=params[0], scale=params[1], size = n_bid)
             ## First Price Auction optimal bid
             for v in vals:
-                FP_bid = v - (monte_carlo_integrator(dist, params, 0, v, n_bid)/norm.cdf(v, loc = params[0], scale = params[1])**(n_bid-1))
+                FP_bid = v - (integrate.quad(cdf_normal, 0, v, args = (params[0], params[1], n_bid))[0])/norm.cdf(v, loc = params[0], scale = params[1])**(n_bid-1)
                 FP_optimal_bid.append(FP_bid)
         
         elif dist == 'beta':
-            vals = np.random.beta(params[0], params[1], n_sim)
+            vals = np.random.beta(params[0], params[1], n_bid)*100
             ## First Price Auction optimal bid
             for v in vals:
-                FP_bid = v - (monte_carlo_integrator(dist, params, 0, v, n_bid)/beta.cdf(v, a = params[0], b = params[1], scale = params[2])**(n_bid-1))
+                FP_bid = v - (integrate.quad(cdf_beta, 0, v/100, args = (params[0], params[1], n_bid))[0])/beta.cdf(v/100, a = params[0], b = params[1])**(n_bid-1)
                 FP_optimal_bid.append(FP_bid)
         FP_optimal_bid.sort()
         ## Second Price Auction optimal bid
@@ -76,15 +58,14 @@ def val_simulator(dist, n_sim, n_bid, params):
         SP_optimal_bid.sort()
         
         # Seller Revenues
-        FP_revenue.append(max(FP_optimal_bid))
+        FP_revenue.append(FP_optimal_bid[-1])
         SP_revenue.append(SP_optimal_bid[-2])
     return FP_revenue, SP_revenue
     
 
-
 def main():
     dist = input('Distribution of valuation:')
-    n_bid = int(input('Numebr of Bidders:'))
+    n_bid = int(input('Number of Bidders:'))
     if dist.lower() == 'uniform' or dist.lower() in 'uniform':
         dist = 'uniform'
         lb = float(input('Lower Bound:'))
