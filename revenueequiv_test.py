@@ -18,14 +18,14 @@ sns.set(rc = {'figure.figsize':(5,5)})
 # def cdf_normal(x, mean, sd, n):
 #     return(((norm(loc=mean, scale = sd).cdf(x))/(norm(loc=mean, scale = sd).cdf(0)))**(n-1))
 
-def monte_carlo_integrator(dist, params, lower, upper):
-    def f(x):
+def monte_carlo_integrator(dist, params, lower, upper, n):
+    def f(x, lower, upper):
         if dist == 'uniform':
-            return uniform.cdf(x, loc = params[0], scale = params[1])
+            return ((x-lower)/(upper-lower))**(n-1)
         elif dist == 'normal':
-            return norm.cdf(x, loc = params[0], scale = params[1])
+            return (norm.cdf(x, loc = params[0], scale = params[1]))**(n-1)
         elif dist == 'beta':
-            return beta.cdf(x, a = params[0], b = params[1], scale = params[2])
+            return (beta.cdf(x, a = params[0], b = params[1], scale = params[2]))**(n-1)
         
     n = 1000
     ar = np.zeros(n)
@@ -34,7 +34,7 @@ def monte_carlo_integrator(dist, params, lower, upper):
     
     integral = 0.0
     for i in ar:
-        integral += np.sin(i)
+        integral += f(i, lower, upper)
         
     ret = (upper-lower)/float(n)*integral
     return ret
@@ -42,37 +42,35 @@ def monte_carlo_integrator(dist, params, lower, upper):
 
 
 # Seller revenue arrays
-def val_simulator(dist, n_sim, params):
+def val_simulator(dist, n_sim, n_bid, params):
     FP_revenue = []
     SP_revenue = []
     
     
-    for _ in tqdm(range(n_sim), total = n_sim, desc = f'Simulating i.i.d. valutaion draws from a {dist} distribution:'):
+    for _ in tqdm(range(n_sim), total = n_sim, desc = 'Simulating i.i.d. valutaion draws from a {} distribution:'.format(dist)):
     #    data = uniform.rvs(size=n, loc = start, scale=width)
+        FP_optimal_bid = []
         if dist == 'uniform':
-            vals = uniform.rvs(size = n_sim, loc = params[0], scale = params[1])
+            vals = np.random.uniform(params[0], params[1], n_bid)
             ## First Price Auction optimal bida
-            FP_optimal_bid = []
             for v in vals:
-                FP_bid = v - (monte_carlo_integrator(dist, params, 0, v)/uniform.cdf(v, loc = params[0], scale = params[1]))
+                FP_bid = v - ((monte_carlo_integrator(dist, params, 0, v, n_bid)/((v-params[0])/(params[1]-params[0]))**(n_bid-1)))
                 FP_optimal_bid.append(FP_bid)
                 
         elif dist == 'normal':
-            vals = norm.rvs(size=n_sim, loc = params[0], scale=params[1])
-            ## First Price Auction optimal bida
-            FP_optimal_bid = []
+            vals = np.random.normal(params[0], params[1], n_sim)
+            ## First Price Auction optimal bid
             for v in vals:
-                FP_bid = v - (monte_carlo_integrator(dist, params, 0, v)/norm.cdf(v, loc = params[0], scale = params[1]))
+                FP_bid = v - (monte_carlo_integrator(dist, params, 0, v, n_bid)/norm.cdf(v, loc = params[0], scale = params[1])**(n_bid-1))
                 FP_optimal_bid.append(FP_bid)
         
         elif dist == 'beta':
-            vals = beta.rvs(size=n_sim, a = params[0], b = params[1], scale = params[2])
-            ## First Price Auction optimal bida
-            FP_optimal_bid = []
+            vals = np.random.beta(params[0], params[1], n_sim)
+            ## First Price Auction optimal bid
             for v in vals:
-                FP_bid = v - (monte_carlo_integrator(dist, params, 0, v)/beta.cdf(v, a = params[0], b = params[1], scale = params[2]))
+                FP_bid = v - (monte_carlo_integrator(dist, params, 0, v, n_bid)/beta.cdf(v, a = params[0], b = params[1], scale = params[2])**(n_bid-1))
                 FP_optimal_bid.append(FP_bid)
-
+        FP_optimal_bid.sort()
         ## Second Price Auction optimal bid
         SP_optimal_bid = vals
         SP_optimal_bid.sort()
@@ -85,8 +83,8 @@ def val_simulator(dist, n_sim, params):
 
 
 def main():
-    dist = input('Input distribution of valuation:')
-    n_sim = int(input('How many valuation draws?:'))
+    dist = input('Distribution of valuation:')
+    n_bid = int(input('Numebr of Bidders:'))
     if dist.lower() == 'uniform' or dist.lower() in 'uniform':
         dist = 'uniform'
         lb = float(input('Lower Bound:'))
@@ -99,15 +97,17 @@ def main():
         sd = float(input('Std. Deviation:')) 
         params = [mean, sd]
     
-    #beta parametrization found here: https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.beta.html
+    #beta parametrization found here: https://numpy.org/doc/stable/reference/random/generated/numpy.random.beta.html
     if dist.lower() == 'beta':
         dist = 'beta'
         alpha = float(input('Alpha:'))
         beta = float(input('Beta:'))
-        scale = float(input('Scale:'))
-        params = [alpha, beta, scale]
+        params = [alpha, beta]
         
-    FP_revenue, SP_revenue = val_simulator(dist, n_sim, params)
+    n_sim = int(input('Number of simulations:'))    
+    
+    FP_revenue, SP_revenue = val_simulator(dist, n_sim, n_bid, params)
+    
     # Test of Revenue Equivalence Theorem - difference in the seller revenue
     diff_revenue = []    
     for FP_rev,SP_rev in zip(FP_revenue, SP_revenue):
