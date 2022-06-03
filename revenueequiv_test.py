@@ -25,9 +25,10 @@ def cdf_beta(x, a, b, n):
 
     
 def val_simulator(dist, n_sim, n_bid, params):
+
+    # initiate empty lists to stoore revenue
     FP_revenue = []
     SP_revenue = []
-    
     
     for _ in tqdm(range(n_sim), total = n_sim, desc = 'Simulating i.i.d. valutaion draws from a {} distribution:'.format(dist)):
     #    data = uniform.rvs(size=n, loc = start, scale=width)
@@ -40,11 +41,31 @@ def val_simulator(dist, n_sim, n_bid, params):
                 FP_optimal_bid.append(FP_bid)
                 
         elif dist == 'normal':
+
+            # draw the values from the normal distribution and sort
             vals = truncnorm.rvs(a = 0, b = 100, loc=params[0], scale=params[1], size = n_bid)
-            ## First Price Auction optimal bid
+            vals.sort()
+            
+            # evaluate cdf for each value
+            vals_cdf = norm.cdf(vals, loc = params[0], scale = params[1])**(n_bid-1)
+            
+            # define function to integrate
+            f = lambda x: (truncnorm.cdf(x, a = 0, b = 100, loc = params[0], scale = params[1])**(n_bid-1))
+
+            # intitiate the iterative integral at 0
+            last, last_val = 0, 0
+
+            # create empty list to append to
+            vals_integrated = []
+            
+            # loop through values in order, sequentially integrating
             for v in vals:
-                FP_bid = v - (integrate.quad(cdf_normal, 0, v, args = (params[0], params[1], n_bid))[0])/norm.cdf(v, loc = params[0], scale = params[1])**(n_bid-1)
-                FP_optimal_bid.append(FP_bid)
+                Lval, x = quad(f, last_val, v)
+                last, last_val = last + Lval, v
+                vals_integrated.append(last)
+
+            # calculate optimal bids
+            FP_optimal_bid = vals - (vals_integrated/vals_cdf)
         
         elif dist == 'beta':
             vals = np.random.beta(params[0], params[1], n_bid)*100
@@ -52,6 +73,7 @@ def val_simulator(dist, n_sim, n_bid, params):
             for v in vals:
                 FP_bid = v - (integrate.quad(cdf_beta, 0, v/100, args = (params[0], params[1], n_bid))[0])/beta.cdf(v/100, a = params[0], b = params[1])**(n_bid-1)
                 FP_optimal_bid.append(FP_bid)
+
         FP_optimal_bid.sort()
         ## Second Price Auction optimal bid
         SP_optimal_bid = vals
@@ -60,6 +82,7 @@ def val_simulator(dist, n_sim, n_bid, params):
         # Seller Revenues
         FP_revenue.append(FP_optimal_bid[-1])
         SP_revenue.append(SP_optimal_bid[-2])
+
     return FP_revenue, SP_revenue
     
 
