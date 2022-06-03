@@ -47,7 +47,7 @@ def val_simulator(dist, n_sim, n_bid, params):
             vals.sort()
             
             # evaluate cdf for each value
-            vals_cdf = norm.cdf(vals, loc = params[0], scale = params[1])**(n_bid-1)
+            vals_cdf = truncnorm.cdf(vals, loc = params[0], scale = params[1])**(n_bid-1)
             
             # define function to integrate
             f = lambda x: (truncnorm.cdf(x, a = 0, b = 100, loc = params[0], scale = params[1])**(n_bid-1))
